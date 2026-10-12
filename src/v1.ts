@@ -1,14 +1,14 @@
 import type { Plugin } from "@opencode-ai/plugin";
 
-import type { ModelReference } from "./config.js";
-import { parsePluginConfiguration } from "./config.js";
-import type { ReviewSessionClient } from "./reviewer.js";
 import {
   reviewerAgentDescription,
   reviewerAgentName,
   reviewerAgentPrompt,
   reviewerAllowedTools,
-} from "./reviewer.js";
+} from "./agent-reviewer.js";
+import type { ModelReference } from "./config.js";
+import { usesAgentReviewer, parsePluginConfiguration } from "./config.js";
+import type { ReviewSessionClient } from "./reviewer.js";
 import type { PluginDependencies } from "./shared.js";
 import { isRecord, reviewForApproval, reviewToolCallOrThrow, textFromParts } from "./shared.js";
 
@@ -117,14 +117,16 @@ export function createV1Plugin(dependencies: PluginDependencies): Plugin {
         directory: context.directory,
       }),
       configuration,
+      directory: context.directory,
     });
     const models = new Map<string, ModelReference>();
     const intents = new Map<string, string>();
 
     return {
       config: async (config) => {
-        // The Jev backend needs no reviewer agent.
-        if (configuration.reviewer.backend !== "opencode") return;
+        // Only the agent reviewer, as the backend or the decision backend's
+        // oversize fallback, needs the reviewer agent.
+        if (!usesAgentReviewer(configuration)) return;
         config.agent ??= {};
         config.agent[reviewerAgentName] = reviewerAgentConfig();
       },

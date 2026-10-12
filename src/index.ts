@@ -1,16 +1,17 @@
+import { AgentReviewer } from "./agent-reviewer.js";
 import { AuditingReviewer, createAuditLogger } from "./audit.js";
-import { JevReviewer } from "./jev-reviewer.js";
-import { OpenCodeReviewer } from "./reviewer.js";
+import { ChatReviewer } from "./chat-reviewer.js";
+import { DecisionReviewer } from "./decision-reviewer.js";
+import { OversizeFallbackReviewer } from "./fallback-reviewer.js";
+import type { Reviewer } from "./reviewer.js";
 import type { PluginDependencies } from "./shared.js";
+import { fileUsageRecorder, projectID, usageLogPath } from "./usage.js";
 import { createV1Plugin } from "./v1.js";
 import { createV2Plugin } from "./v2.js";
 
 const defaultDependencies: PluginDependencies = {
   createReviewer: (input) => {
-    const reviewer =
-      input.configuration.reviewer.backend === "jev"
-        ? new JevReviewer({ configuration: input.configuration })
-        : new OpenCodeReviewer(input);
+    const reviewer = backendReviewer(input);
     const audit = input.configuration.auditLog;
     if (!audit.enabled || !audit.path) return reviewer;
     return new AuditingReviewer({
@@ -20,6 +21,34 @@ const defaultDependencies: PluginDependencies = {
     });
   },
 };
+
+function backendReviewer(input: Parameters<PluginDependencies["createReviewer"]>[0]): Reviewer {
+  const { reviewer } = input.configuration;
+  // Reviews in an OpenCode session already count in `opencode stats`; the
+  // HTTP backends are logged for this package's `stats`.
+  const usage = reviewer.recordUsage
+    ? {
+        recordUsage: fileUsageRecorder({ path: usageLogPath() }),
+        project: projectID({ directory: input.directory }),
+      }
+    : {};
+  const agent = () => new AgentReviewer(input);
+  const chat = () => new ChatReviewer({ configuration: input.configuration, ...usage });
+  switch (reviewer.backend) {
+    case "agent":
+      return new OversizeFallbackReviewer({ primary: agent() });
+    case "chat":
+      return new OversizeFallbackReviewer({ primary: chat() });
+    case "decision": {
+      const onOversize = reviewer.decision?.onOversize ?? "escalate";
+      return new OversizeFallbackReviewer({
+        primary: new DecisionReviewer({ configuration: input.configuration, ...usage }),
+        ...(onOversize === "agent" ? { fallback: agent() } : {}),
+        ...(onOversize === "chat" ? { fallback: chat() } : {}),
+      });
+    }
+  }
+}
 
 /**
  * One package, both plugin API generations: opencode 2.x loads the V2

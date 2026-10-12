@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { AgentReviewer } from "./agent-reviewer.js";
 import { parsePluginConfiguration } from "./config.js";
-import { JevReviewer } from "./jev-reviewer.js";
-import { OpenCodeReviewer } from "./reviewer.js";
+import { MAX_CONVERSATION_TURNS } from "./conversation.js";
+import { DecisionReviewer } from "./decision-reviewer.js";
+import { reviewState } from "./review-state.js";
 import type { ReviewRequest } from "./reviewer.js";
 
 describe("shared review state", () => {
-  it("sends identical bounded operation data and preserves custom instructions in both backends", async () => {
+  it("sends identical operation data and preserves custom instructions in the agent and decision backends", async () => {
     const instructions = "Always escalate publishing.";
     const request: ReviewRequest = {
       source: "tool-call",
@@ -23,28 +25,36 @@ describe("shared review state", () => {
         incomplete: false,
       },
     };
-    const prompt = vi.fn(async () => '{"verdict":"allow","reason":"safe"}');
-    const client = {
-      create: async () => ({ sessionID: "review" }),
-      prompt,
-      abort: async () => undefined,
-    };
-    const opencode = new OpenCodeReviewer({
-      client,
+    const prompt = vi.fn(async (input: { text: string }) => {
+      const check = /Review check: "([\da-f-]+)"/.exec(input.text)?.[1];
+      return `{"verdict":"allow","reason":"safe","check":"${check}"}`;
+    });
+    const agent = new AgentReviewer({
+      client: {
+        create: async () => ({ sessionID: "review" }),
+        prompt,
+        abort: async () => undefined,
+      },
       configuration: parsePluginConfiguration({ options: { reviewer: { instructions } } }),
     });
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({ answers: { verdict: { choice: "allow", confidence: 0.99 } } }),
     );
-    const jev = new JevReviewer({
+    const decision = new DecisionReviewer({
       fetch,
       configuration: parsePluginConfiguration({
-        options: { reviewer: { backend: "jev", instructions, jev: { apiKey: "test-key" } } },
+        options: {
+          reviewer: {
+            backend: "decision",
+            instructions,
+            decision: { provider: "typesafe", apiKey: "test-key" },
+          },
+        },
       }),
     });
-    await opencode.review(request);
-    await jev.review(request);
-    const promptText = String((prompt.mock.calls[0] as unknown as [{ text: string }])[0].text);
+    await agent.review(request);
+    await decision.review(request);
+    const promptText = String(prompt.mock.calls[0]?.[0].text);
     const body = JSON.parse(String(fetch.mock.calls[0]?.[1]?.body));
     const operationLine = promptText.split("\n").find((line) => line.startsWith('{"source":'));
     expect(JSON.parse(operationLine!)).toEqual(body.state);
@@ -56,22 +66,23 @@ describe("shared review state", () => {
     expect(JSON.stringify(body.state)).not.toContain(instructions);
   });
 
-  it("does not allow an oversized OpenCode operation after applying the same state cap", async () => {
-    const reviewer = new OpenCodeReviewer({
-      configuration: parsePluginConfiguration({ options: {} }),
-      client: {
-        create: async () => ({ sessionID: "review" }),
-        prompt: async () => '{"verdict":"allow","reason":"safe"}',
-        abort: async () => undefined,
-      },
+  it("keeps the whole operation and bounds only the conversation, by whole turns", () => {
+    const resource = "x".repeat(80_000);
+    const turns = Array.from({ length: MAX_CONVERSATION_TURNS + 2 }, (_, index) => ({
+      role: "user" as const,
+      text: `turn ${index}`,
+    }));
+    const state = reviewState({
+      source: "tool-call",
+      sessionID: "s",
+      action: "write",
+      resource,
+      conversation: { turns, incomplete: false },
     });
-    expect(
-      await reviewer.review({
-        source: "tool-call",
-        sessionID: "s",
-        action: "write",
-        resource: "x".repeat(80_000),
-      }),
-    ).toMatchObject({ verdict: "escalate" });
+    expect(state.resource).toBe(resource);
+    expect(state.conversation).toEqual({
+      turns: turns.slice(-MAX_CONVERSATION_TURNS),
+      incomplete: true,
+    });
   });
 });

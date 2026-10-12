@@ -13,7 +13,7 @@ export const MAX_AUDIT_QUEUE_SIZE = 1_000;
 
 export type AuditLogEntry = {
   timestamp: string;
-  backend: "opencode" | "jev";
+  backend: PluginConfiguration["reviewer"]["backend"];
   sessionID: string;
   source: ReviewRequest["source"];
   action: string;
@@ -31,13 +31,13 @@ function classifyError(error: unknown): AuditLogEntry["errorCategory"] {
   const message = error instanceof Error ? error.message : "";
   if (/timed out/i.test(message)) return "timeout";
   if (/HTTP \d+/.test(message)) return "http";
-  if (message === "Jev request failed.") return "network";
+  if (/^(?:Decision|Chat) model request failed\.$/.test(message)) return "network";
   if (/JSON|verdict schema/.test(message)) return "invalid-response";
   return "reviewer-error";
 }
 
 /** Best-effort only. Never redact a prefix of oversized input: a cut token could leak. */
-export function redactCommand(input: { command: string; apiKey?: string }): {
+export function redactCommand(input: { command: string; apiKeys?: string[] }): {
   command: string;
   truncated: boolean;
 } {
@@ -48,7 +48,9 @@ export function redactCommand(input: { command: string; apiKey?: string }): {
     return { command: "[OMITTED_OVERSIZED_COMMAND]", truncated: true };
   }
   let text = input.command;
-  if (input.apiKey) text = text.split(input.apiKey).join("[REDACTED_KEY]");
+  for (const apiKey of input.apiKeys ?? []) {
+    if (apiKey) text = text.split(apiKey).join("[REDACTED_KEY]");
+  }
   text = text
     .replace(
       /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
@@ -92,7 +94,10 @@ function commandForAudit(input: {
     if (isRecord(resource) && typeof resource.command === "string") {
       const redacted = redactCommand({
         command: resource.command,
-        apiKey: configuration.reviewer.jev?.apiKey,
+        apiKeys: [
+          configuration.reviewer.decision?.apiKey,
+          configuration.reviewer.chat?.apiKey,
+        ].filter((apiKey) => apiKey !== undefined),
       });
       return { command: redacted.command, commandTruncated: redacted.truncated };
     }

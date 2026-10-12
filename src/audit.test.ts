@@ -37,7 +37,7 @@ const request: ReviewRequest = {
 };
 const entry: AuditLogEntry = {
   timestamp: "2026-10-02T00:00:00.000Z",
-  backend: "opencode",
+  backend: "agent",
   sessionID: "session",
   source: "tool-call",
   action: "bash",
@@ -50,14 +50,14 @@ const entry: AuditLogEntry = {
 };
 
 describe("AuditingReviewer", () => {
-  it.each(["opencode", "jev"])(
+  it.each(["agent", "decision"])(
     "wraps %s without interpreting reason text as confidence",
     async (backend) => {
       const log = vi.fn();
       const configuration = parsePluginConfiguration({
         options: {
           auditLog: { enabled: true, path: join(process.cwd(), "tmp", "audit.jsonl") },
-          reviewer: { backend, jev: { apiKey: "test-key" } },
+          reviewer: { backend, decision: { provider: "typesafe", apiKey: "test-key" } },
         },
       });
       const decision = { verdict: "allow" as const, reason: "confidence 0.99" };
@@ -117,7 +117,7 @@ describe("AuditingReviewer", () => {
 
   it("keeps errors and decisions unchanged even when logging throws", async () => {
     const warning = vi.spyOn(process.stderr, "write").mockReturnValue(true);
-    const failure = new Error("Jev request failed with HTTP 500. secret");
+    const failure = new Error("Decision model request failed with HTTP 500. secret");
     const review = vi
       .fn()
       .mockRejectedValueOnce(failure)
@@ -221,7 +221,7 @@ describe("best-effort command redaction", () => {
     address.username = "user";
     address.password = "pass";
     const command = `TOKEN=secret curl --password hidden ${address.href} configured-key`;
-    const result = redactCommand({ command, apiKey: "configured-key" });
+    const result = redactCommand({ command, apiKeys: ["configured-key"] });
     expect(result.command).not.toMatch(/secret|hidden|user:pass|configured-key/);
   });
 

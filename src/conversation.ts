@@ -115,25 +115,28 @@ export async function readConversation(input: {
   load(): Promise<ConversationContext>;
   latest(): string | undefined;
   configuration: PluginConfiguration["conversation"];
-}): Promise<{ userIntent?: string; conversation: ConversationContext }> {
+}): Promise<{ userIntent?: string; conversation?: ConversationContext }> {
+  // Disabled, the reviewer sees the captured prompt only, as before the option existed.
+  if (!input.configuration.enabled) {
+    const latest = input.latest();
+    return latest === undefined ? {} : { userIntent: latest };
+  }
   let conversation: ConversationContext = { turns: [], incomplete: false };
   let timer: ReturnType<typeof setTimeout> | undefined;
-  if (input.configuration.enabled) {
-    try {
-      conversation = await Promise.race([
-        input.load(),
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(
-            () => reject(new Error("Session history timed out.")),
-            HISTORY_TIMEOUT_MS,
-          );
-        }),
-      ]);
-    } catch {
-      conversation.incomplete = true;
-    } finally {
-      clearTimeout(timer);
-    }
+  try {
+    conversation = await Promise.race([
+      input.load(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Session history timed out.")),
+          HISTORY_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } catch {
+    conversation.incomplete = true;
+  } finally {
+    clearTimeout(timer);
   }
   const latest = input.latest();
   if (

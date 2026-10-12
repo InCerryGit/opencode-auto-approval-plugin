@@ -125,7 +125,7 @@ remains entirely in OpenCode.
 
 Set `reviewer.backend` to `"decision"` to have a decision model judge each operation instead of an
 OpenCode session. The plugin sends one request with the operation (`source`, `action`,
-`resource`, the user's latest prompt and the bounded conversation) and a single `allow` / `deny` / `escalate` choice. No
+`resource`, the user's latest prompt and, when enabled, the bounded conversation) and a single `allow` / `deny` / `escalate` choice. No
 reviewer agent or session is created (unless `onOversize` is `"agent"`) and the workspace is not
 inspected. Two providers speak the
 same System One API:
@@ -399,6 +399,10 @@ the plugin's `options` object (the second tuple item under `plugin` on OpenCode 
   Choose a private directory outside version control; do not use a path controlled by an untrusted
   project. Parent directories are trusted: the no-follow check protects the final file, not every
   parent component. Only the target file is tightened to mode `0600`; existing directories are not modified.
+- An existing regular file at `path` is appended to, whatever it is. Like `instructions` and
+  `baseURL`, set `auditLog` only in configuration you trust — a repository's `opencode.json` could
+  otherwise point it at a file such as a shell start-up script and have agent-controlled command
+  text appended to it.
 - JSONL records contain time, backend, session, source, action, verdict, confidence, duration in
   milliseconds and a fixed error category. Confidence is backend metadata (the decision model's
   selected-choice probability, including when an allow is escalated), or `null` when unavailable; it is never
@@ -419,10 +423,10 @@ the plugin's `options` object (the second tuple item under `plugin` on OpenCode 
   Shutdown can lose queued records. There is no automatic rotation or retention policy; manage
   the file yourself. This is not a durable compliance ledger.
 
-### Bounded conversation context
+### Bounded conversation context (opt-in)
 
-`conversation.enabled` defaults to `true`. Each review reads the current session's available
-history, retaining at most **8 whole turns / 12,000 characters**. Only user turns are included by
+`conversation.enabled` defaults to `false`: the reviewer then sees only the latest captured prompt.
+Enabled, each review reads the current session's available history, retaining at most **8 whole turns / 12,000 characters**. Only user turns are included by
 default, so a short request such as "continue" can refer to an earlier user instruction without
 letting assistant prose establish consent. `conversation.includeAssistant: true` also sends
 assistant text as untrusted context, never as authorization. Tool output, synthetic/ignored parts,
@@ -432,8 +436,9 @@ loaded into the payload; configured `reviewer.instructions` still apply to every
 History reads can add up to **1 second** (`HISTORY_TIMEOUT_MS`) before each review, including every
 tool call in `all-tools` mode. V1 requests at most **32 host messages** (`HISTORY_MESSAGE_LIMIT`);
 V2 reads the host's context view, which may already have been compacted. There is no history cache.
-Set `conversation.enabled: false` to skip these reads and send only the currently captured prompt.
-The timeout stops waiting, not necessarily the underlying host read. Failures fall back to that
+Earlier user turns widen what the reviewer may treat as authorized — an old instruction can back an
+operation the latest prompt does not mention — which is why the context is opt-in. The timeout
+stops waiting, not necessarily the underlying host read. Failures fall back to the latest captured
 prompt and mark the context incomplete.
 
 `incomplete` records observed compaction, local clipping or a failed history read, not an assumption

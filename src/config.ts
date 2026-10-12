@@ -240,7 +240,7 @@ function conversationConfiguration(
   input: z.infer<typeof pluginConfigurationSchema>["conversation"],
 ): PluginConfiguration["conversation"] {
   return {
-    enabled: input?.enabled ?? true,
+    enabled: input?.enabled ?? false,
     includeAssistant: input?.includeAssistant ?? false,
   };
 }

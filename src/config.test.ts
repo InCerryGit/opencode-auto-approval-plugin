@@ -45,7 +45,7 @@ describe("parsePluginConfiguration", () => {
     expect(parsePluginConfiguration({ options: {}, env: {} })).toEqual({
       mode: "on-ask",
       auditLog: { enabled: false, includeCommand: false },
-      conversation: { enabled: true, includeAssistant: false },
+      conversation: { enabled: false, includeAssistant: false },
       reviewer: {
         backend: "agent",
         agent: { maxInputBytes: 200_000 },
@@ -69,7 +69,7 @@ describe("parsePluginConfiguration", () => {
     ).toEqual({
       mode: "all-tools",
       auditLog: { enabled: false, includeCommand: false },
-      conversation: { enabled: true, includeAssistant: false },
+      conversation: { enabled: false, includeAssistant: false },
       reviewer: {
         backend: "agent",
         agent: {

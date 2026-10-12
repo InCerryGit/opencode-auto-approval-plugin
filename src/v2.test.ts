@@ -114,7 +114,7 @@ describe("V2 plugin (opencode 2.x)", () => {
 
   it("includes assistant text only with explicit opt-in and does not use synthetic prompts", async () => {
     const { context, hooks } = createContext({
-      options: { conversation: { includeAssistant: true } },
+      options: { conversation: { enabled: true, includeAssistant: true } },
     });
     const { plugin, review } = createPlugin({ verdict: "allow" });
     await plugin.setup(context as never);
@@ -227,13 +227,6 @@ describe("V2 plugin (opencode 2.x)", () => {
       action: "bash",
       resource: { resources: ["git push"], metadata: {} },
       userIntent: "push my branch",
-      conversation: {
-        turns: [
-          { role: "user", text: "hello" },
-          { role: "user", text: "push my branch" },
-        ],
-        incomplete: false,
-      },
       model: { providerID: "openai", modelID: "gpt-5.6" },
     });
     expect(event).toMatchObject({ effect: "allow", message: "reviewed" });

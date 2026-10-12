@@ -126,12 +126,12 @@ describe("bounded conversation", () => {
     }));
     const result = await readConversation({ load, latest: () => latest, configuration });
     expect(result.userIntent).toBe("continue");
-    expect(result.conversation.turns[0]?.text).toBe("run tests only");
+    expect(result.conversation?.turns[0]?.text).toBe("run tests only");
     latest = "stop";
     expect(
-      (await readConversation({ load, latest: () => latest, configuration })).conversation.turns.at(
-        -1,
-      )?.text,
+      (
+        await readConversation({ load, latest: () => latest, configuration })
+      ).conversation?.turns.at(-1)?.text,
     ).toBe("stop");
     latest = "";
     expect((await readConversation({ load, latest: () => latest, configuration })).userIntent).toBe(
@@ -147,10 +147,7 @@ describe("bounded conversation", () => {
         latest: () => "current",
         configuration: { ...configuration, enabled: false },
       }),
-    ).toEqual({
-      userIntent: "current",
-      conversation: { turns: [{ role: "user", text: "current" }], incomplete: false },
-    });
+    ).toEqual({ userIntent: "current" });
     expect(load).not.toHaveBeenCalled();
   });
 

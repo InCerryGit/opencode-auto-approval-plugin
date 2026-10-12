@@ -40,7 +40,7 @@ describe("V1 plugin (opencode 1.x)", () => {
       ],
     });
     const { plugin, review } = createPlugin({ verdict: "allow" });
-    const hooks = await plugin(context as never, {});
+    const hooks = await plugin(context as never, { conversation: { enabled: true } });
     await hooks.event?.({
       event: {
         type: "permission.updated",
